@@ -9,15 +9,39 @@ from prompts import icl_user_prompt, icl_ass_prompt
 
 def llm_init(model_name, tensor_parallel_size=1, max_seq_len_to_capture=8192, max_tokens=4000, seed=0, temperature=0, frequency_penalty=0):
     if "gpt" not in model_name:
-        client = LLM(model=model_name, tensor_parallel_size=tensor_parallel_size, max_seq_len_to_capture=max_seq_len_to_capture)
-        sampling_params = SamplingParams(temperature=temperature, max_tokens=max_tokens,
-                                         frequency_penalty=frequency_penalty)
-        llm = partial(client.chat, sampling_params=sampling_params, use_tqdm=False)
+        client = LLM(
+            model=model_name,
+            tensor_parallel_size=tensor_parallel_size,
+            max_seq_len_to_capture=max_seq_len_to_capture,
+            seed=seed,
+        )
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            max_tokens=max_tokens,
+            frequency_penalty=frequency_penalty,
+            seed=seed,
+        )
+        chat_kwargs = {}
+        if "qwen3" in model_name.lower():
+            chat_kwargs["chat_template_kwargs"] = {
+                "enable_thinking": False
+            }
+
+        llm = partial(
+            client.chat,
+            sampling_params=sampling_params,
+            use_tqdm=False,
+            **chat_kwargs,
+        )
     else:
-        # api_key = input("Enter OpenAI API key: ")
-        # os.environ["OPENAI_API_KEY"] = api_key
         client = OpenAI()
-        llm = partial(client.chat.completions.create, model=model_name, seed=seed, temperature=temperature, max_tokens=max_tokens)
+        llm = partial(
+            client.chat.completions.create,
+            model=model_name,
+            seed=seed,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
     return llm
 
 
