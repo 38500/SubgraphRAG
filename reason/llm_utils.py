@@ -14,6 +14,9 @@ def llm_init(model_name, tensor_parallel_size=1, max_seq_len_to_capture=8192, ma
             tensor_parallel_size=tensor_parallel_size,
             max_seq_len_to_capture=max_seq_len_to_capture,
             seed=seed,
+            max_model_len=8192,
+            max_num_seqs=1,
+            enforce_eager=True,
         )
         sampling_params = SamplingParams(
             temperature=temperature,
@@ -21,18 +24,29 @@ def llm_init(model_name, tensor_parallel_size=1, max_seq_len_to_capture=8192, ma
             frequency_penalty=frequency_penalty,
             seed=seed,
         )
-        chat_kwargs = {}
         if "qwen3" in model_name.lower():
-            chat_kwargs["chat_template_kwargs"] = {
-                "enable_thinking": False
-            }
+            tokenizer = client.get_tokenizer()
 
-        llm = partial(
-            client.chat,
-            sampling_params=sampling_params,
-            use_tqdm=False,
-            **chat_kwargs,
-        )
+            def qwen_chat(messages):
+                text = tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    enable_thinking=False,
+                )
+                return client.generate(
+                    prompts=[text],
+                    sampling_params=sampling_params,
+                    use_tqdm=False,
+                )
+
+            llm = qwen_chat
+        else:
+            llm = partial(
+                client.chat,
+                sampling_params=sampling_params,
+                use_tqdm=False,
+            )
     else:
         client = OpenAI()
         llm = partial(

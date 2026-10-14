@@ -103,6 +103,10 @@ def main():
     parser.add_argument("--temperature", type=float, default=0, help="Temperature")
     parser.add_argument("--frequency_penalty", type=float, default=0.16, help="Frequency penalty")
     parser.add_argument("--thres", type=float, default=0.0, help="Threshold")
+    parser.add_argument("--limit", type=int, default=None,
+                    help="Only run the first N questions")
+    parser.add_argument("--skip_eval", action="store_true",
+                    help="Skip automatic evaluation")
 
     args = parser.parse_args()
     dataset_name = args.dataset_name
@@ -133,11 +137,20 @@ def main():
         score_dict_path = args.score_dict_path
 
     raw_pred_folder_path = Path(f"./results/KGQA/{dataset_name}/SubgraphRAG/{args.model_name.split('/')[-1]}")
+    if args.limit is not None:
+        if args.limit <= 0:
+            parser.error("--limit must be positive")
+        raw_pred_folder_path = raw_pred_folder_path / f"smoke_{args.limit}"
     raw_pred_folder_path.mkdir(parents=True, exist_ok=True)
     raw_pred_file_path = raw_pred_folder_path / f"{prompt_mode}-{llm_mode}-{frequency_penalty}-thres_{thres}-{split}-predictions-resume.jsonl"
 
-    llm = llm_init(model_name, tensor_parallel_size, max_seq_len_to_capture, max_tokens, seed, temperature, frequency_penalty)
     data = get_data(dataset_name, pred_file_path, score_dict_path, split, prompt_mode)
+
+    if args.limit is not None:
+        data = data[:args.limit]
+
+    llm = llm_init(model_name, tensor_parallel_size, max_seq_len_to_capture,
+                   max_tokens, seed, temperature, frequency_penalty)
     sys_prompt, cot_prompt = get_defined_prompts(prompt_mode, model_name, llm_mode)
     print("Generating prompts...")
     data = get_prompts_for_data(data, prompt_mode, sys_prompt, cot_prompt, thres)
@@ -156,8 +169,11 @@ def main():
     # If the processing completes, rename the files to remove the "resume" flag
     final_pred_file_path = raw_pred_file_path.with_name(raw_pred_file_path.stem.replace("-resume", "") + raw_pred_file_path.suffix)
     os.rename(raw_pred_file_path, final_pred_file_path)
-    eval_all(final_pred_file_path, run, subset=True)
-    eval_all(final_pred_file_path, run, subset=False)
+    if not args.skip_eval:
+        eval_all(final_pred_file_path, run, subset=True)
+        eval_all(final_pred_file_path, run, subset=False)
+
+    run.finish()
 
 
 if __name__ == "__main__":
